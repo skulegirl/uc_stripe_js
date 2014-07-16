@@ -180,7 +180,7 @@ function uc_stripe_js_form_alter(&$form, $form_state, $form_id) {
       $stripe_js_script .= 'data-amount="'. $order_total*100 .'" '; // note that total must be in cents
       $stripe_js_script .= 'data-email="'. $customer_email .'" ';
       $stripe_js_script .= 'data-billing-address="true" ';
-      $stripe_js_script .= '>';
+      $stripe_js_script .= '></script>';
      
       // Build the data to send to my payment gateway
       $data = array(
