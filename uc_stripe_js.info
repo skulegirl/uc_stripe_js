@@ -3,8 +3,8 @@ description = A gateway used to process payments using Stripe.js, i.e. does not 
 dependencies[] = uc_payment
 dependencies[] = libraries
 package = Ubercart - payment
-core = 6.x
+core = 7.x
 php = 5.2
-version = "6.x-1.1"
+version = "7.x-1.1"
 project = "uc_stripe_js"
 

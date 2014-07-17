@@ -6,7 +6,10 @@
  * Developed by skulegirl
  */
 
-function uc_stripe_js_payment_gateway() {
+/* 
+ * Implement hook_uc_payment_gateway
+ */
+function uc_stripe_js_uc_payment_gateway() {
   $gateways[] = array(
     'id' => 'stripe_js_gateway',
     'title' => t('Stripe JS Gateway'),
@@ -18,7 +21,10 @@ function uc_stripe_js_payment_gateway() {
   return $gateways;
 }
 
-function uc_stripe_js_payment_method() {
+/* 
+ * Implement hook_uc_payment_method
+ */
+function uc_stripe_js_uc_payment_method() {
   $title = t('Credit card:');
   $cc_types = array(
     'visa' => t('Visa'),
@@ -27,16 +33,20 @@ function uc_stripe_js_payment_method() {
     'amex' => t('American Express'),
   );
   foreach ($cc_types as $type => $label) {
-    // ANNA - can't be bothered to implement this variable right now, just hardcode the 3 we accept
-//    if (variable_get('uc_credit_'. $type, TRUE)) {
-      $title .= ' ' . theme('image', drupal_get_path('module', 'uc_stripe_js') . '/images/' . $type . '.gif', $label,  '', array('class' => 'uc-stripe-js-cctype uc-stripe-js-cctype-' . $type));
-//    }
+      $variables = array(
+        'path' => drupal_get_path('module', 'uc_stripe_js') . '/images/' . $type . '.gif',
+        'alt' => $label,
+        'attributes' => array(
+          'class' => 'uc-stripe-js-cctype uc-stripe js-cctype-' . $type
+        ),
+      );
+      $title .= ' ' . theme('image', $variables);
   }
   $methods[] = array(
     'id' => 'stripe_js',
     'name' => t('Stripe.js credit processing'),
     'title' => $title,
-    'review' => t('Credit card (Visa, Mastercard or American Express)'),
+    'review' => t('Credit card via Stripe'),
     'desc' => t('Pay through Stripe.js gateway'),
     'callback' => 'uc_stripe_js_method',
     'weight' => 0,
@@ -46,7 +56,10 @@ function uc_stripe_js_payment_method() {
   return $methods;
 } 
 
-function uc_stripe_js_order_pane() {
+/* 
+ * Implement hook_uc_order_pane
+ */
+function uc_stripe_js_uc_order_pane() {
   $panes[] = array(
     'id' => 'stripe_js',
     'callback' => 'uc_stripe_js_order_pane_stripe',
@@ -59,6 +72,9 @@ function uc_stripe_js_order_pane() {
   return $panes;
 }
 
+/*
+ * Callback method
+ */
 function uc_stripe_js_method($op, &$order) {
   switch ($op) {
     case 'settings':
@@ -117,11 +133,21 @@ function uc_stripe_js_method($op, &$order) {
 //-------------------------------------------------------------------------------------------|
 //  Callback for stripe order pane
 //-------------------------------------------------------------------------------------------|
-function uc_stripe_js_order_pane_stripe($op, $arg1) {
+function uc_stripe_js_order_pane_stripe($op, $order, &$form = NULL, &$form_state = NULL) {
   if($op == 'view'){
-    $stripe_customer_id = _uc_stripe_js_get_customer_id($arg1->uid);
-    $output = "Stripe Customer ID: $stripe_customer_id";
-    return $output;
+    $stripe_customer_id = _uc_stripe_js_get_customer_id($order->uid);
+    if ($stripe_customer_id)
+    {
+      $build['id'] = array('#markup' => t('Stripe Customer ID: @id', array('@id' => $stripe_customer_id)));
+      if(isset($order->data['stripe_charge_id']))
+      {
+        $build['charge'] = array(
+          '#markup' => t('Stripe Charge ID: @id', array('@id' => $order->data['stripe_charge_id'])),
+          '#prefix' => '<br />'
+        );
+      }
+    }
+    return $build;
   }
 }
 
@@ -131,57 +157,10 @@ function uc_stripe_js_form_alter(&$form, $form_state, $form_id) {
 
     // Note that if this isn't unset, then the callbacks don't happen properly for some reason. Unable to 
     // figure out why so far. Can probably replace it with a link to the /cart/checkout page.
-    unset($form['back']);
+    unset($form['actions']['back']);
     if ($order->payment_method == 'stripe_js') {
 
-      // Collect some information about the order
-      $time = time();
-      $order_id = $order->order_id;
-      $order_total = number_format($order->order_total, 2, '.', '');
-      $customer_email = $order->primary_email;
-      $cart_id = uc_cart_get_id();
-
-      $external_js = 'https://checkout.stripe.com/checkout.js';
-      $apikey = variable_get('uc_stripe_js_testmode', TRUE) ? variable_get('uc_stripe_js_api_key_test_publishable', '') : variable_get('uc_stripe_js_api_key_live_publishable', '');
-      $checkoutimgpath = variable_get('uc_stripe_js_checkout_image', '//stripe.com/img/documentation/checkout/marketplace.png');
-      $data_name = variable_get('uc_stripe_js_checkout_name', '');
-
-      $contents = uc_cart_get_contents();
-
-      // ANNA - total hack in here to handle my product names being way too long.
-      foreach ($contents as $item) {
-        if (preg_match('/^.*1Year$/', $item->model))
-        {
-          $orderdsc .= '1 Year ';
-        }
-        elseif (preg_match('/^.*3Years$/', $item->model))
-        {
-          $orderdsc .= '3 Year ';
-        }
-        if (preg_match('/^FullMembership-BDA-.*$/', $item->model))
-        {
-          $orderdsc .= 'Discounted Full Membership';
-        }
-        elseif (preg_match('/^FullMembership-NoBDA-.*$/', $item->model))
-        {
-          $orderdsc .= 'Full Membership';
-        }
-      }
-
-      $stripe_js_script .= '<script ';
-      $stripe_js_script .= 'src="'. $external_js .'" '; 
-      $stripe_js_script .= 'type="text/javascript" ';
-      $stripe_js_script .= 'class="stripe-button" ';
-      $stripe_js_script .= 'data-label="Pay Now!" ';
-      $stripe_js_script .= 'data-name="'. $data_name .'" ';
-      $stripe_js_script .= 'data-key="'. $apikey .'" ';
-      $stripe_js_script .= 'data-image="'. $checkoutimgpath .'" ';
-      $stripe_js_script .= 'data-description="'. $orderdsc .'" ';
-      $stripe_js_script .= 'data-amount="'. $order_total*100 .'" '; // note that total must be in cents
-      $stripe_js_script .= 'data-email="'. $customer_email .'" ';
-      $stripe_js_script .= 'data-billing-address="true" ';
-      $stripe_js_script .= '>';
-     
+      $orderdsc = _uc_stripe_get_orderdsc();
       // Build the data to send to my payment gateway
       $data = array(
         'timestamp' => time(),
@@ -201,18 +180,72 @@ function uc_stripe_js_form_alter(&$form, $form_state, $form_id) {
 
       //--Add our custom submit routine to the top of the submit array------------------------------------------------------------------------|
       array_unshift($form['#submit'], "uc_stripe_js_checkout_form_customsubmit");
-//      $form['#submit'][] = 'uc_stripe_js_submit_form_submit';
-      $form['submit']['#prefix'] = '<div style="height:0px; width:0px; visibility:hidden">';
-      $form['submit']['#suffix'] = '</div>';
+      $form['actions']['submit']['#attributes']['style'] = array('height:0px; width:0px; visibility:hidden');
+      $stripe_js_script = _uc_stripe_js_get_script();
       $form['hidden_submit'] = array('#type' => 'hidden', '#suffix' => $stripe_js_script);
-
-//      $form['#prefix'] = '<table style="display: inline; padding-top: 1em;"><tr><td>';
-//      $form['#suffix'] = '</td></tr></table>';
     }
   }
 }
+function _uc_stripe_js_get_script()
+{
+  $external_js = 'https://checkout.stripe.com/checkout.js';
 
-   
+  // Collect some information about the order
+  $order_id = intval($_SESSION['cart_order']);
+  $order = uc_order_load($order_id);
+  $orderdsc = _uc_stripe_get_orderdsc();
+  $order_total = number_format($order->order_total, 2, '.', '');
+  $customer_email = $order->primary_email;
+  $apikey = variable_get('uc_stripe_js_testmode', TRUE) ? variable_get('uc_stripe_js_api_key_test_publishable', '') : variable_get('uc_stripe_js_api_key_live_publishable', '');
+  $checkoutimgpath = variable_get('uc_stripe_js_checkout_image', '//stripe.com/img/documentation/checkout/marketplace.png');
+  $data_name = variable_get('uc_stripe_js_checkout_name', '');
+
+  $stripe_js_script .= '<script ';
+  $stripe_js_script .= 'src="'. $external_js .'" '; 
+  $stripe_js_script .= 'type="text/javascript" ';
+  $stripe_js_script .= 'class="stripe-button" ';
+  $stripe_js_script .= 'data-label="Pay Now!" ';
+  $stripe_js_script .= 'data-name="'. $data_name .'" ';
+  $stripe_js_script .= 'data-key="'. $apikey .'" ';
+  $stripe_js_script .= 'data-image="'. $checkoutimgpath .'" ';
+  $stripe_js_script .= 'data-description="'. $orderdsc .'" ';
+  $stripe_js_script .= 'data-amount="'. $order_total*100 .'" '; // note that total must be in cents
+  $stripe_js_script .= 'data-email="'. $customer_email .'" ';
+  $stripe_js_script .= 'data-billing-address="true" ';
+  $stripe_js_script .= '></script>';
+  return $stripe_js_script;
+}
+
+
+function _uc_stripe_get_orderdsc()
+{
+    $contents = uc_cart_get_contents();
+
+    // ANNA - total hack in here to handle my product names being way too long.
+    foreach ($contents as $item) {
+      if (preg_match('/^.*1Year$/', $item->model))
+      {
+        $orderdsc .= '1 Year ';
+      }
+      elseif (preg_match('/^.*3Years$/', $item->model))
+      {
+        $orderdsc .= '3 Year ';
+      }
+      if (preg_match('/^FullMembership-BDA-.*$/', $item->model))
+      {
+        $orderdsc .= 'Discounted Full Membership';
+      }
+      elseif (preg_match('/^FullMembership-NoBDA-.*$/', $item->model))
+      {
+        $orderdsc .= 'Full Membership';
+      }
+    }
+    return $orderdsc;
+}
+
+/* 
+ * charge callback
+ */   
 function uc_stripe_js_charge($order_id, $amount, $data) {
   watchdog('uc_stripe_js', 'In uc_stripe_js_charge', NULL, WATCHDOG_DEBUG);
 
@@ -237,20 +270,8 @@ function uc_stripe_js_charge($order_id, $amount, $data) {
 
   global $user;
   $order = uc_order_load($order_id);
-      
-  $context = array(
-    'revision' => 'formatted-original',
-    'type' => 'amount',
-  );
-
-  $options = array(
-    'sign' => FALSE,
-    'thou' => FALSE,
-    'dec'  => FALSE,
-    'prec' => 2,
-  );
   
-  $amount = uc_price($amount, $context, $options);
+  $amount = uc_currency_format($amount, FALSE, FALSE, FALSE);
 
 
   //-------------------------------------------------------------------------------------------|
@@ -272,19 +293,7 @@ function uc_stripe_js_charge($order_id, $amount, $data) {
   // Create a new customer if one doesn't yet exist 
   if(!$stripe_customer_id){
     try{
-      //Create the customer in stripe
-      $customer = Stripe_Customer::create(array(
-        "card" => $stripe_token,
-        'description' => "OrderID: {$order->order_id}",
-        'email' => "$order->primary_email"
-        )
-      );
-      
-      //Store the customer ID in the session, 
-      //We'll pick it up later to save it in the database since we might not have a $user object at this point anyway
-      $_SESSION['stripe']['customer_id'] = $customer->id;
-      $stripe_customer_id = $customer->id;
-      
+      $stripe_customer_id = _uc_stripe_js_create_customer($order);
     }
     catch (Exception $e) {
       $result = array(
@@ -329,9 +338,53 @@ function uc_stripe_js_charge($order_id, $amount, $data) {
     
     uc_order_comment_save($order_id, $user->uid, $result['message'], 'admin');
     watchdog('uc_stripe_js', $result['message']);
-    return $result;
-  }
 
+    // Don't bail here - try to create a new customer instead.
+    try{
+      $stripe_customer_id = _uc_stripe_js_create_customer($order);
+    }
+    catch (Exception $e) {
+      $result = array(
+        'success' => FALSE,
+        'comment' => $e->getCode(),
+        'message' => t("Stripe Customer Creation Failed for order !order: !message", array("!order" => $order_id, "!message" => $e->getMessage())),
+        'uid' => $user->uid,
+        'order_id' => $order_id,
+      );
+      
+      uc_order_comment_save($order_id, $user->uid, $result['message'], 'admin');
+      
+      watchdog('uc_stripe_js', $result['message']);
+      
+      return $result;
+    }
+    // if that succeeded, then now try to retrieve the customer again and add the card details
+    try {
+      //If the token is not in the user's session, we can't set up a new customer
+      if(empty($_SESSION['stripe']['token'])){throw new Exception('Token not found');}
+      
+      //Get the token for this card
+      $stripe_token = $_SESSION['stripe']['token'];
+    
+      //Retrieve the customer in stripe
+      $customer = Stripe_Customer::retrieve($stripe_customer_id);
+      // Update the card info to that supplied
+      $customer->card = $stripe_token;
+      $customer->save();
+    }
+    catch (Exception $e) {
+      $result = array(
+        'success' => FALSE,
+        'comment' => $e->getCode(),
+        'message' => t("Stripe Customer card update failed for order !order: !message", array("!order" => $order_id, "!message" => $e->getMessage())),
+        'uid' => $user->uid,
+        'order_id' => $order_id,
+      );
+      
+      uc_order_comment_save($order_id, $user->uid, $result['message'], 'admin');
+      watchdog('uc_stripe_js', $result['message']);
+    }
+  }
 
   //-------------------------------------------------------------------------------------------|
   //  Charge the stripe customer the amount in the order
@@ -367,7 +420,7 @@ function uc_stripe_js_charge($order_id, $amount, $data) {
         "amount" => $amount,
         "currency" => "usd",
         "customer" => $stripe_customer_id,
-        "description" => $_SESSION['stripe']['orderdsc'],
+        "description" => "Order {$order->order_id}: {$_SESSION['stripe']['orderdsc']}",
         )
       );
       
@@ -380,7 +433,8 @@ function uc_stripe_js_charge($order_id, $amount, $data) {
         'uid' => $user->uid,
         'trans_id' => $charge->__get('id'),
       );
-      
+      $order->data['stripe_charge_id'] = $result['trans_id'];
+      uc_order_save($order); 
       uc_order_comment_save($order_id, $user->uid, $result['message'], 'admin');
       uc_order_comment_save($order_id, $user->uid, $result['message'], 'order', 'completed', false); 
       return $result;
@@ -427,6 +481,37 @@ function uc_stripe_js_charge($order_id, $amount, $data) {
 
 }
 
+// Method to create a customer. Must be wrapped in try block to catch erors.
+function _uc_stripe_js_create_customer($order) {
+    // Get the username
+    if ($order->uid)
+    {
+      $account = user_load($order->uid);
+      $description = "User {$account->name}";
+    }
+    else if (isset($order->data['new_user']) && isset($order->data['new_user']['name']))
+    {
+      $description = "User {$order->data['new_user']['name']}";
+    }
+    else
+    {
+      $description = "Order ID {$order->order_id}";
+    }
+      
+    //Create the customer in stripe
+    $customer = Stripe_Customer::create(array(
+      "card" => $stripe_token,
+      'description' => $description,
+      'email' => "$order->primary_email"
+      )
+    );
+    
+    //Store the customer ID in the session, 
+    //We'll pick it up later to save it in the database since we might not have a $user object at this point anyway
+    $_SESSION['stripe']['customer_id'] = $customer->id;
+    return $customer->id;
+}
+
 function _uc_stripe_js_load_api() {
   if ($path = libraries_get_path('stripe')) {
     // Load Stripe Library.
@@ -460,13 +545,14 @@ function _uc_stripe_js_load_api() {
 function _uc_stripe_js_get_customer_id($uid){
   
   $account = user_load(array('uid' => $uid)); 
-  $userdata = unserialize($account->data);
-  
-  if(empty($userdata['uc_stripe_js_customer_id'])){return false;}
-  
-  $stripe_customer_id = $userdata['uc_stripe_js_customer_id'];
-  
-  return $stripe_customer_id;
+  if(empty($account->data['uc_stripe_js_customer_id']))
+  {
+    return false;
+  }
+  else
+  {
+    return $account->data['uc_stripe_js_customer_id'];
+  }
 }
 
 /**
@@ -482,15 +568,15 @@ function uc_stripe_js_submit_form_submit($form, &$form_state) {
 }
 
 /**
- * Implements hook_order().
+ * Implements hook_uc_order().
  */
-function uc_stripe_js_order($op, $arg1, $arg2) {
+function uc_stripe_js_uc_order($op, $arg1, $arg2) {
   switch ($op) {
     case 'submit':
       if ($arg1->payment_method == 'stripe_js') {
 
         // Attempt to process the CC payment.
-        $pass = uc_payment_process('stripe_js', $arg1->order_id, $arg1->order_total, $data, FALSE, NULL, FALSE);
+        $pass = uc_payment_process_payment('stripe_js', $arg1->order_id, $arg1->order_total, $data, FALSE, NULL, FALSE);
 
         // If the payment failed, store the data back in the session and
         // halt the checkout process.
@@ -503,14 +589,18 @@ function uc_stripe_js_order($op, $arg1, $arg2) {
   }
 }
 
+/**
+ * Implement hook_uc_checkout_complete
+ */
 function uc_stripe_js_uc_checkout_complete($order, $account){
-        
   //Pull the stripe customer ID from the session.
   $stripe_customer_id = $_SESSION['stripe']['customer_id'];
   
   $loaded_user = user_load(array('uid' => $account->uid));
+  $edit = array();
+  $edit['data']['uc_stripe_js_customer_id'] = $stripe_customer_id;
   
-  user_save($loaded_user, array("uc_stripe_js_customer_id" => $stripe_customer_id));
+  user_save($loaded_user, $edit); 
   
 }
 
@@ -523,8 +613,7 @@ function uc_stripe_js_uc_checkout_complete($order, $account){
 //-------------------------------------------------------------------------------------------|
 
 function uc_stripe_js_checkout_form_customsubmit($form, &$form_state){
-  $_SESSION['stripe']['token'] = $form_state['clicked_button']['#post']['stripeToken'];
-  $_SESSION['stripe']['orderdsc'] = $form_state['clicked_button']['#post']['order_description'];
-  
+  $_SESSION['stripe']['token'] = $form_state['input']['stripeToken'];
+  $_SESSION['stripe']['orderdsc'] = $form_state['input']['order_description'];
 }
 ?>
