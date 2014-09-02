@@ -594,14 +594,16 @@ function uc_stripe_js_uc_order($op, $arg1, $arg2) {
  */
 function uc_stripe_js_uc_checkout_complete($order, $account){
   //Pull the stripe customer ID from the session.
-  $stripe_customer_id = $_SESSION['stripe']['customer_id'];
-  
-  $loaded_user = user_load(array('uid' => $account->uid));
-  $edit = array();
-  $edit['data']['uc_stripe_js_customer_id'] = $stripe_customer_id;
-  
-  user_save($loaded_user, $edit); 
-  
+  if(isset($_SESSION['stripe']))
+  {
+    $stripe_customer_id = $_SESSION['stripe']['customer_id'];
+    
+    $loaded_user = user_load(array('uid' => $account->uid));
+    $edit = array();
+    $edit['data']['uc_stripe_js_customer_id'] = $stripe_customer_id;
+    
+    user_save($loaded_user, $edit); 
+  } 
 }
 
 
