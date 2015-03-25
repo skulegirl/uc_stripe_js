@@ -233,11 +233,11 @@ function _uc_stripe_get_orderdsc()
       }
       if (preg_match('/^FullMembership-BDA-.*$/', $item->model))
       {
-        $orderdsc .= 'Discounted Full Membership';
+        $orderdsc .= 'Host Membership';
       }
       elseif (preg_match('/^FullMembership-NoBDA-.*$/', $item->model))
       {
-        $orderdsc .= 'Full Membership';
+        $orderdsc .= 'Guest-Only  Membership';
       }
     }
     return $orderdsc;
