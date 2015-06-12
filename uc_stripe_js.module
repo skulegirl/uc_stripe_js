@@ -16,7 +16,7 @@ function uc_stripe_js_uc_payment_gateway() {
     'description' => t('Process credit card payments using Stripe JS.'),
     'stripe_js' => 'uc_stripe_js_charge',
     'settings' => 'uc_stripe_js_settings_form',
-    'credit_txn_types' => array(UC_CREDIT_AUTH_ONLY, UC_CREDIT_PRIOR_AUTH_CAPTURE, UC_CREDIT_AUTH_CAPTURE),
+    'credit_txn_types' => array('UC_CREDIT_AUTH_ONLY', 'UC_CREDIT_PRIOR_AUTH_CAPTURE', 'UC_CREDIT_AUTH_CAPTURE'),
   );
   return $gateways;
 }
@@ -146,9 +146,10 @@ function uc_stripe_js_order_pane_stripe($op, $order, &$form = NULL, &$form_state
           '#prefix' => '<br />'
         );
       }
-    }
     return $build;
+    }
   }
+  return array();
 }
 
 function uc_stripe_js_form_alter(&$form, $form_state, $form_id) {
@@ -200,7 +201,7 @@ function _uc_stripe_js_get_script()
   $checkoutimgpath = variable_get('uc_stripe_js_checkout_image', '//stripe.com/img/documentation/checkout/marketplace.png');
   $data_name = variable_get('uc_stripe_js_checkout_name', '');
 
-  $stripe_js_script .= '<script ';
+  $stripe_js_script = '<script ';
   $stripe_js_script .= 'src="'. $external_js .'" '; 
   $stripe_js_script .= 'type="text/javascript" ';
   $stripe_js_script .= 'class="stripe-button" ';
@@ -220,6 +221,7 @@ function _uc_stripe_js_get_script()
 function _uc_stripe_get_orderdsc()
 {
     $contents = uc_cart_get_contents();
+    $orderdsc = '';
 
     // ANNA - total hack in here to handle my product names being way too long.
     foreach ($contents as $item) {
@@ -247,7 +249,6 @@ function _uc_stripe_get_orderdsc()
  * charge callback
  */   
 function uc_stripe_js_charge($order_id, $amount, $data) {
-  watchdog('uc_stripe_js', 'In uc_stripe_js_charge', NULL, WATCHDOG_DEBUG);
 
   //-------------------------------------------------------------------------------------------|
   //  Load the stripe API
@@ -500,7 +501,7 @@ function _uc_stripe_js_create_customer($order) {
       
     //Create the customer in stripe
     $customer = Stripe_Customer::create(array(
-      "card" => $stripe_token,
+      'card' => NULL, // don't know the token yet
       'description' => $description,
       'email' => "$order->primary_email"
       )
@@ -543,8 +544,7 @@ function _uc_stripe_js_load_api() {
 //  @param int $uid: the user to check an ID for
 //-------------------------------------------------------------------------------------------|
 function _uc_stripe_js_get_customer_id($uid){
-  
-  $account = user_load(array('uid' => $uid)); 
+  $account = user_load($uid); 
   if(empty($account->data['uc_stripe_js_customer_id']))
   {
     return false;
@@ -561,7 +561,6 @@ function _uc_stripe_js_get_customer_id($uid){
  * @see uc_cart_checkout_review_form()
  */
 function uc_stripe_js_submit_form_submit($form, &$form_state) {
-  watchdog('uc_stripe_js', 'In uc_stripe_js_submit_form_submit', NULL, WATCHDOG_DEBUG);
   $order = uc_order_load($_SESSION['cart_order']);
 
   $form_state['redirect'] = 'cart/checkout/complete';
@@ -576,7 +575,7 @@ function uc_stripe_js_uc_order($op, $arg1, $arg2) {
       if ($arg1->payment_method == 'stripe_js') {
 
         // Attempt to process the CC payment.
-        $pass = uc_payment_process_payment('stripe_js', $arg1->order_id, $arg1->order_total, $data, FALSE, NULL, FALSE);
+        $pass = uc_payment_process_payment('stripe_js', $arg1->order_id, $arg1->order_total, NULL, FALSE, NULL, FALSE);
 
         // If the payment failed, store the data back in the session and
         // halt the checkout process.
@@ -598,7 +597,7 @@ function uc_stripe_js_uc_checkout_complete($order, $account){
   {
     $stripe_customer_id = $_SESSION['stripe']['customer_id'];
     
-    $loaded_user = user_load(array('uid' => $account->uid));
+    $loaded_user = user_load($account->uid);
     $edit = array();
     $edit['data']['uc_stripe_js_customer_id'] = $stripe_customer_id;
     
