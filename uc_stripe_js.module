@@ -237,7 +237,7 @@ function _uc_stripe_get_orderdsc()
       }
       elseif (preg_match('/^FullMembership-NoBDA-.*$/', $item->model))
       {
-        $orderdsc .= 'Guest-Only  Membership';
+        $orderdsc .= 'Guest-Only Membership';
       }
     }
     return $orderdsc;
