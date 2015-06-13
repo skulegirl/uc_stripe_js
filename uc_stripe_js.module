@@ -210,6 +210,8 @@ function _uc_stripe_js_get_script()
   $stripe_js_script .= 'data-key="'. $apikey .'" ';
   $stripe_js_script .= 'data-image="'. $checkoutimgpath .'" ';
   $stripe_js_script .= 'data-description="'. $orderdsc .'" ';
+  $stripe_js_script .= 'data-currency="' . (isset($order->currency) ? $order->currency : 'USD') .'" ';
+  $stripe_js_script .= 'data-allow-remember-me="false" ';
   $stripe_js_script .= 'data-amount="'. $order_total*100 .'" '; // note that total must be in cents
   $stripe_js_script .= 'data-email="'. $customer_email .'" ';
   $stripe_js_script .= 'data-billing-address="true" ';
@@ -414,6 +416,17 @@ function uc_stripe_js_charge($order_id, $amount, $data) {
       //Bail if there's no customer ID
       if(empty($stripe_customer_id)){throw new Exception('No customer ID found');}
 
+      $tax = 0;
+      if(module_exists('uc_taxes')) {
+        foreach(uc_taxes_calculate($order) as $tax_item) {
+          $tax += $tax_item->amount;
+        }
+      }
+      $tax = uc_currency_format($tax, FALSE, FALSE, '.');
+      $pretax_sub = uc_currency_format($amount/100.0 - $tax, FALSE, FALSE, '.');
+
+      $billing_country = isset($order->billing_country) ? uc_country_get_by_id($order->billing_country) : 'n/a';
+      $billing_zone = isset($order->billing_zone) ? uc_zone_get_by_id($order->billing_zone) : 'n/a';
       
       // charge the Customer the amount in the order - will use the default card on file, which should
       // have been updated above to the card supplied
@@ -422,8 +435,13 @@ function uc_stripe_js_charge($order_id, $amount, $data) {
         "currency" => isset($order->currency) ? $order->currency : 'USD',
         "customer" => $stripe_customer_id,
         "description" => "Order {$order->order_id}: {$_SESSION['stripe']['orderdsc']}",
-        )
-      );
+        "metadata" => array(
+          "pretax subtotal" => $pretax_sub,
+          "tax" => $tax,
+          "billing country" => $billing_country,
+          "billing zone" => $billing_zone,
+        ),
+      ));
       
       $formatted_amount = $amount / 100;
       $formatted_amount = number_format ($formatted_amount, 2);
